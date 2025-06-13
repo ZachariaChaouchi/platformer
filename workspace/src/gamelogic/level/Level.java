@@ -35,6 +35,18 @@ public class Level {
 
 	private ArrayList<Enemy> enemiesList = new ArrayList<>();
 	private ArrayList<Flower> flowers = new ArrayList<>();
+	// New
+	private int flowerCount = 0;
+
+	private ArrayList<Gas> gasList = new ArrayList<>();
+	private boolean playerTouchingGas;
+
+	private ArrayList<Water> waterList = new ArrayList<>();
+	private boolean playerTouchingWater;
+	private int playerDeathCounter = 0;
+	private int otherCounter = 0;
+
+
 
 	private List<PlayerDieListener> dieListeners = new ArrayList<>();
 	private List<PlayerWinListener> winListeners = new ArrayList<>();
@@ -55,14 +67,14 @@ public class Level {
 		restartLevel();
 	}
 
-	public LevelData getLevelData(){
+	public LevelData getLevelData() {
 		return leveldata;
 	}
 
 	public void restartLevel() {
 		int[][] values = mapdata.getValues();
 		Tile[][] tiles = new Tile[width][height];
-
+		flowerCount = 0;
 		for (int x = 0; x < width; x++) {
 			int xPosition = x;
 			for (int y = 0; y < height; y++) {
@@ -89,7 +101,8 @@ public class Level {
 				else if (values[x][y] == 7)
 					tiles[x][y] = new SolidTile(xPosition, yPosition, tileSize, tileset.getImage("Grass"), this);
 				else if (values[x][y] == 8)
-					enemiesList.add(new Enemy(xPosition*tileSize, yPosition*tileSize, this)); // TODO: objects vs tiles
+					enemiesList.add(new Enemy(xPosition * tileSize, yPosition * tileSize, this)); // TODO: objects vs
+																									// tiles
 				else if (values[x][y] == 9)
 					tiles[x][y] = new Flag(xPosition, yPosition, tileSize, tileset.getImage("Flag"), this);
 				else if (values[x][y] == 10) {
@@ -137,6 +150,10 @@ public class Level {
 	}
 
 	public void onPlayerDeath() {
+		// New
+		playerDeathCounter +=1;
+		flowerCount = 0;
+		player.setDoubleJump(false);
 		active = false;
 		playerDead = true;
 		throwPlayerDieEvent();
@@ -167,13 +184,46 @@ public class Level {
 
 			for (int i = 0; i < flowers.size(); i++) {
 				if (flowers.get(i).getHitbox().isIntersecting(player.getHitbox())) {
-					if(flowers.get(i).getType() == 1)
+					if (flowers.get(i).getType() == 1)
 						water(flowers.get(i).getCol(), flowers.get(i).getRow(), map, 3);
-//					else
-//						addGas(flowers.get(i).getCol(), flowers.get(i).getRow(), map, 20, new ArrayList<Gas>());
+					else
+						addGas(flowers.get(i).getCol(), flowers.get(i).getRow(), map, 20, new ArrayList<Gas>());
 					flowers.remove(i);
 					i--;
+					flowerCount +=1;
 				}
+			}
+
+			// New
+			if(flowerCount >= 3){
+				player.setDoubleJump(true);
+			}
+
+			if(playerDeathCounter > otherCounter){
+				waterList.clear();
+				gasList.clear();
+				otherCounter += 1;
+			}
+			playerTouchingWater = false;
+			for (int i = 0; i < waterList.size(); i++) {
+				if (waterList.get(i).getHitbox().isIntersecting(player.getHitbox())) {
+					player.setJumpPower(800);
+					player.setWalkSpeed(200);
+					playerTouchingWater = true;
+				}
+			}
+
+			playerTouchingGas = false;
+			for (int i = 0; i < gasList.size(); i++) {
+				if (gasList.get(i).getHitbox().isIntersecting(player.getHitbox())) {
+					player.setJumpPower(2000);
+					player.setWalkSpeed(800);
+					playerTouchingGas = true;
+				}
+			}
+			if (!playerTouchingGas && !playerTouchingWater) {
+				player.setJumpPower(1350);
+				player.setWalkSpeed(400);
 			}
 
 			// Update the enemies
@@ -190,27 +240,151 @@ public class Level {
 			// Update the camera
 			camera.update(tslf);
 		}
+
 	}
-	
-	
-	//#############################################################################################################
-	//Your code goes here! 
-	//Please make sure you read the rubric/directions carefully and implement the solution recursively!
+
+	// #############################################################################################################
+	// Your code goes here!
+	// Please make sure you read the rubric/directions carefully and implement the
+	// solution recursively!
+	/*
+	 * Pre-condition: col is a column that is in the platformer and row is a row
+	 * that is in the platformer, map is the map of the platformer, and fullness is
+	 * between 0 and 3
+	 * Post-condition: After a flower is touched, water will either fall or spill to
+	 * the sides depending on if there is a solid object beneath it.
+	 */
+
 	private void water(int col, int row, Map map, int fullness) {
-		
+		// Lets fullness change
+		String full;
+		if (fullness == 0) {
+			full = "Falling_water";
+		} else if (fullness == 1) {
+			full = "Quarter_water";
+		} else if (fullness == 2) {
+			full = "Half_water";
+		} else {
+			full = "Full_water";
+		}
+
+		// Creates and places the new water block
+		Water w = new Water(col, row, tileSize, tileset.getImage(full), this, fullness);
+		map.addTile(col, row, w);
+		// New
+		waterList.add(w);
+
+		// check if we can go down
+		if (row + 1 < map.getTiles()[0].length && !map.getTiles()[col][row + 1].isSolid()) {
+			// If there is a block down 2, we need to create a full water block there
+			if (row + 2 < map.getTiles()[col].length && map.getTiles()[col][row + 2].isSolid()) {
+				water(col, row + 1, map, 3);
+				// If there's empty space, we need more falling water
+			} else if (!(map.getTiles()[col][row + 1] instanceof Water)) {
+				water(col, row + 1, map, 0);
+
+			}
+			// If we can't go down and we can go right, then place a block with less
+			// fullness to the right
+		} else if (col + 1 < map.getTiles().length
+				&& !(map.getTiles()[col + 1][row] instanceof Water) && !(map.getTiles()[col + 1][row].isSolid())) {
+			if (fullness > 1) {
+				water(col + 1, row, map, fullness - 1);
+			} else if (fullness == 1) { // If the fullness is 1 then we can't have it go to 0 because it isn't falling
+				water(col + 1, row, map, fullness);
+			}
+
+		}
+		// If we can't go down and we can go left, then repeat the same process as going
+		// right
+		if (col - 1 >= 0 && !map.getTiles()[col - 1][row].isSolid()
+				&& !(map.getTiles()[col - 1][row] instanceof Water)
+				&& !((row + 1 < map.getTiles()[0].length && !map.getTiles()[col][row + 1].isSolid()))) {
+			if (fullness > 1) {
+				water(col - 1, row, map, fullness - 1);
+			} else if (fullness == 1) {
+				water(col - 1, row, map, fullness);
+			}
+
+		}
+
 	}
 
+	// Pre-condition: A flower(the kind that makes gas) is stepped on and all the
+	// parameters are accurately declared and relate to the game.
+	// Post-condition: Gas will be created with a designated pattern will be created
+	// and placedThisRound will be updated.
+	private void addGas(int col, int row, Map map, int numSquaresToFill, ArrayList<Gas> placedThisRound) {
+		Gas g = new Gas(col, row, tileSize, tileset.getImage("GasOne"), this, 0);
+		map.addTile(col, row, g);
+		gasList.add(g);
+		placedThisRound.add(g);
+		numSquaresToFill -= 1;
 
+		while (placedThisRound.size() > 0 && numSquaresToFill > 0) { // Checks for when to stop placing gas
+			row = placedThisRound.get(0).getRow();
+			col = placedThisRound.get(0).getCol();
+
+			placedThisRound.remove(0);
+
+			for (int r = row - 1; r < row + 2; r++) {
+				for (int c = col; c > col - 2; c -= 2) {
+
+					if (c < map.getTiles().length && c >= 0 && r < map.getTiles()[c].length
+							&& r >= 0 && !(map.getTiles()[c][r].isSolid()) && !(map.getTiles()[c][r] instanceof Gas)) {
+						g = new Gas(c, r, tileSize, tileset.getImage("GasOne"), this, 0);
+						map.addTile(c, r, g);
+						gasList.add(g);
+						placedThisRound.add(g);
+						numSquaresToFill -= 1;
+					}
+
+					if (c == col) {
+						c += 3;
+					}
+
+				}
+
+			}
+
+		}
+
+	}
 
 	public void draw(Graphics g) {
 		g.translate((int) -camera.getX(), (int) -camera.getY());
-
 		// Draw the map
 		for (int x = 0; x < map.getWidth(); x++) {
 			for (int y = 0; y < map.getHeight(); y++) {
 				Tile tile = map.getTiles()[x][y];
 				if (tile == null)
 					continue;
+				if (tile instanceof Gas) {
+
+					int adjacencyCount = 0;
+					for (int i = -1; i < 2; i++) {
+						for (int j = -1; j < 2; j++) {
+							if (j != 0 || i != 0) {
+								if ((x + i) >= 0 && (x + i) < map.getTiles().length && (y + j) >= 0
+										&& (y + j) < map.getTiles()[x].length) {
+									if (map.getTiles()[x + i][y + j] instanceof Gas) {
+										adjacencyCount++;
+									}
+								}
+							}
+						}
+					}
+					if (adjacencyCount == 8) {
+						((Gas) (tile)).setIntensity(2);
+						tile.setImage(tileset.getImage("GasThree"));
+					} else if (adjacencyCount > 5) {
+						((Gas) (tile)).setIntensity(1);
+						tile.setImage(tileset.getImage("GasTwo"));
+					} else {
+						((Gas) (tile)).setIntensity(0);
+						tile.setImage(tileset.getImage("GasOne"));
+					}
+				}
 				if (camera.isVisibleOnCamera(tile.getX(), tile.getY(), tile.getSize(), tile.getSize()))
 					tile.draw(g);
 			}
@@ -227,7 +401,6 @@ public class Level {
 		// used for debugging
 		if (Camera.SHOW_CAMERA)
 			camera.draw(g);
-
 		g.translate((int) +camera.getX(), (int) +camera.getY());
 	}
 
@@ -273,4 +446,5 @@ public class Level {
 	public Player getPlayer() {
 		return player;
 	}
+
 }
